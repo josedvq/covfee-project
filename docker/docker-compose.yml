@@ -1,0 +1,15 @@
+services:
+  covfee:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        COVFEE_PIP_SPEC: ${COVFEE_PIP_SPEC:-git+https://github.com/josedvq/covfee.git}
+    working_dir: /workspace
+    env_file:
+      - ../.env
+    ports:
+      - "${COVFEE_PUBLIC_PORT:-5000}:${COVFEE_BIND_PORT:-5000}"
+    restart: unless-stopped
+    volumes:
+      - ..:/workspace

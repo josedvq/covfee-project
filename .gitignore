@@ -1,0 +1,4 @@
+.env
+.covfee/
+__pycache__/
+*.pyc
