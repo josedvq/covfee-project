@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-ARG COVFEE_GIT_URL=https://github.com/josedvq/covfee.git
 ARG COVFEE_HOST=localhost
 ARG COVFEE_PORT=5022
 ARG COVFEE_COVFEE_SECRET_KEY=change-me
@@ -29,9 +28,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && git clone --depth 1 "${COVFEE_GIT_URL}" /opt/covfee \
-    && python -m pip install --no-cache-dir -e /opt/covfee
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+COPY covfee /opt/covfee
+
+RUN python -m pip install --no-cache-dir -e /opt/covfee
 
 RUN cd /opt/covfee/covfee/shared \
     && npm install \
@@ -43,7 +44,7 @@ RUN cd /opt/covfee/covfee/shared \
 
 WORKDIR /opt/covfee-project
 
-COPY . /opt/covfee-project
+COPY covfee_project /opt/covfee-project
 
 RUN mkdir -p /var/lib/covfee \
     && covfee make . --deploy --no-launch

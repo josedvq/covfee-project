@@ -1,105 +1,117 @@
 # Covfee Starter Project
 
-This repository is a minimal starting point for a Covfee study. It uses a Python project file, keeps local assets under `www/`, and supports both local testing and Docker-based deployment.
+This repository is a minimal Covfee study with a folder-based runtime layout. The study entrypoint is `app.py`, development is configured from `covfee/dev/dev.env`, deployment is configured from `docker/.env`, and static project assets live in `www/`.
 
 ## Project layout
 
 ```text
 covfee_project
-├── getting_started.py
-├── covfee.local.config.py
-├── covfee.deployment.config.py
-├── project_env.py
+├── app.py
 ├── www/
 │   └── instructions.md
 └── docker/
+    ├── .env
     ├── Dockerfile
+    ├── Dockerfile.local
     ├── docker-compose.yml
-    └── entrypoint.sh
+    ├── docker-compose.local.yml
+    └── nginx.conf
 ```
 
-## Local usage
+## Development
 
-1. Copy the environment template:
+Development is owned by the main `covfee` repository, not by this starter repo.
+
+1. Clone/install the main `covfee` repository in editable mode.
+2. From the `covfee` repo root, run:
 
 ```bash
-cp .env.example .env
+# Edit dev/dev.env and set PROJECT_DIR=../covfee_project
+scripts/dev-setup.sh
+covfee-dev run
 ```
 
-2. Install Covfee so the `covfee` command is available. One option is:
+That starts four processes:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install "git+https://github.com/josedvq/covfee.git"
-```
+1. webpack dev server with hot reload
+2. Flask backend with Python reload
+3. Node Redux store service
+4. standalone `www/` file server
 
-3. Run the starter study from the project root:
+## Environment files
 
-```bash
-covfee make getting_started.py
-```
+- `covfee/dev/dev.env`: shared development settings used by `covfee-dev run`
+- `docker/.env`: Docker Compose interpolation and runtime overrides for the deploy stack
 
-Covfee will initialize `.covfee/`, start the app, and open the admin panel at `http://localhost:5001/admin#` by default.
+Common variables:
 
-If you change the public host or port in `.env` for local testing, pass matching flags to `covfee make`, for example `covfee make getting_started.py --host my-host --port 5050`.
-
-If you edit the study and want to rebuild the database, rerun:
-
-```bash
-covfee make getting_started.py --force
-```
-
-## Environment variables
-
-The project config files read values from `.env`.
-
-- `COVFEE_PROJECT_FILE`: Python study file to load.
-- `COVFEE_HOST`: Public hostname used in generated URLs.
-- `COVFEE_PUBLIC_PORT`: Public port used in generated URLs.
-- `COVFEE_BIND_HOST`: Host that the deployment server binds to.
-- `COVFEE_BIND_PORT`: Port that the deployment server binds to.
-- `COVFEE_SECRET_KEY`: Secret key for JWTs and signed links.
-- `COVFEE_ADMIN_USERNAME`: Admin username.
-- `COVFEE_ADMIN_PASSWORD`: Admin password.
-- `COVFEE_MEDIA_SERVER`: Whether Covfee should serve local media from `www/`.
-- `COVFEE_MEDIA_URL`: External media base URL when `COVFEE_MEDIA_SERVER=false`.
-- `COVFEE_SSL_CERT_FILE`: SSL certificate path relative to the project root or absolute.
-- `COVFEE_SSL_KEY_FILE`: SSL key path relative to the project root or absolute.
-- `COVFEE_PIP_SPEC`: Pip install target used by the Docker image.
-- `COVFEE_FORCE_REBUILD`: Forces `covfee make --force` inside Docker on startup.
-
-`covfee make` currently expects an explicit project file path, so local commands use `getting_started.py` directly instead of `covfee make .`.
+- `COVFEE_HOST`: public backend hostname used in generated URLs
+- `COVFEE_PORT`: public backend port used in generated URLs
+- `COVFEE_PROJECT_WWW_URL`: public URL of the standalone `www` fileserver
+- `COVFEE_REDUX_STORE_HOST`: hostname of the Node Redux store service
+- `COVFEE_REDUX_STORE_PORT`: port of the Node Redux store service
+- `COVFEE_DATABASE_PATH`: internal database path inside the deploy image/container
+- `COVFEE_COVFEE_SECRET_KEY`: secret key for JWTs and signed links
+- `COVFEE_ADMIN_USERNAME`: admin username
+- `COVFEE_ADMIN_PASSWORD`: admin password
 
 ## Docker deployment
 
-Copy the env template first if you have not already:
+The default deploy image uses `docker/Dockerfile`, which clones `covfee` from GitHub at build time.
+
+From the project root:
 
 ```bash
-cp .env.example .env
+docker compose --env-file docker/.env -f docker/docker-compose.yml build
+docker compose --env-file docker/.env -f docker/docker-compose.yml up
 ```
 
-Then start the deployment stack from the project root:
+To stop all services:
 
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yml up --build
+docker compose --env-file docker/.env -f docker/docker-compose.yml down
 ```
 
-The container will:
+The deploy stack starts three services:
 
-1. install Covfee
-2. initialize the database with `covfee make getting_started.py --no-launch --deploy`
-3. start the server with `covfee start --deploy`
+1. `covfee`: the Flask/SocketIO backend
+2. `store`: the standalone Node Redux store service from `covfee/store`
+3. `www`: nginx serving the mounted `www/` folder
 
-On later restarts it reuses the existing `.covfee/database.covfee.db` unless `COVFEE_FORCE_REBUILD=true`.
+The backend image clones the remote `covfee` repository into `/opt/covfee`, installs it in editable mode, installs the Node dependencies for `covfee/shared`, `covfee/client`, and `store`, builds the production bundles, copies this project into `/opt/covfee-project`, and runs `covfee make . --deploy --no-launch` at build time using variables forwarded from `docker/.env`. At runtime the same `docker/.env` file is injected into the containers, and the only mounted host volume is `www/`, which is served by nginx.
 
-## SSL
+### Building with a local `covfee` checkout
 
-To enable SSL, place your certificate and key inside the repository or use absolute paths, then set:
+For local testing, `docker/Dockerfile.local` copies the sibling `covfee/` directory from the monorepo instead of cloning from GitHub. `docker/docker-compose.local.yml` overrides the default build config so `covfee` and `store` both build from that local checkout while `www` keeps using the same nginx service definition.
+
+Run these commands from inside `covfee_project/`:
 
 ```bash
-COVFEE_SSL_CERT_FILE=certs/fullchain.pem
-COVFEE_SSL_KEY_FILE=certs/privkey.pem
+docker compose \
+  --env-file docker/.env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.local.yml \
+  build
 ```
 
-When both values are set, Covfee switches its generated URLs to `https://`.
+Start all services:
+
+```bash
+docker compose \
+  --env-file docker/.env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.local.yml \
+  up
+```
+
+Stop all services:
+
+```bash
+docker compose \
+  --env-file docker/.env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.local.yml \
+  down
+```
+
+The local override changes the Docker build context to the monorepo root, so this layout expects `covfee_project/` and `covfee/` to be sibling directories. Docker will send everything under that root unless a top-level `.dockerignore` is added.

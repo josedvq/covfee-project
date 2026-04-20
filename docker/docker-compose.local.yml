@@ -1,0 +1,10 @@
+services:
+  covfee:
+    build:
+      context: ../..
+      dockerfile: covfee_project/docker/Dockerfile.local
+
+  store:
+    build:
+      context: ../..
+      dockerfile: covfee_project/docker/Dockerfile.local
